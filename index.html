@@ -3,9 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Synchronized Lyrics with MP4 Download</title>
+<title>Urdu to English Synchronized Captions + Video Download</title>
 <style>
-/* ===== your previous CSS kept exactly as it is ===== */
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: linear-gradient(-45deg, #1e3c72, #2a5298, #764ba2, #667eea);
@@ -32,131 +31,675 @@ body {
 }
 h1 { color: #FFD700; margin-bottom: 20px; font-weight: bold; letter-spacing: 1px; }
 textarea {
-  width: 100%; height: 150px; padding: 15px;
+  width: 100%; height: 130px; padding: 15px; box-sizing: border-box;
   border: 2px solid #4a5568; border-radius: 12px;
-  background: rgba(0,0,0,0.3); color: white; font-size: 16px;
+  background: rgba(0,0,0,0.3); color: white; font-size: 18px;
+  direction: rtl; margin-bottom: 10px;
 }
 button {
   background: linear-gradient(45deg,#4CAF50,#45a049); color:white;
-  border:none; padding:12px 25px; border-radius:50px; cursor:pointer;
-  margin:10px 5px; font-weight:bold;
+  border:none; padding:12px 22px; border-radius:50px; cursor:pointer;
+  margin:6px 4px; font-weight:bold; font-size:14px;
 }
-button:hover { transform:scale(1.05); background:linear-gradient(45deg,#3e8e41,#2e7031); }
-#status { margin:20px 0; padding:15px; border-radius:12px; background:rgba(255,255,255,0.15); }
-#lyricsDisplay {
-  position: relative; width:100%; max-width:640px; height:200px;
+button:disabled { opacity:0.5; cursor:not-allowed; }
+button:hover:not(:disabled) { transform:scale(1.05); background:linear-gradient(45deg,#3e8e41,#2e7031); }
+#recordBtn { background: linear-gradient(45deg,#e74c3c,#c0392b); }
+#recordBtn:hover:not(:disabled) { background: linear-gradient(45deg,#c0392b,#922b21); }
+#status { margin:15px 0; padding:12px; border-radius:12px; background:rgba(255,255,255,0.15); min-height: 20px; }
+#translatedBox {
+  text-align:left; direction:ltr; background:rgba(0,0,0,0.25); border-radius:12px;
+  padding:12px 15px; margin:10px 0; min-height:20px; font-size:15px; display:none;
+}
+.captionWrap {
+  position: relative; width:100%; max-width:740px; aspect-ratio: 1280 / 400;
   margin:0 auto; border-radius:15px; overflow:hidden;
-  border:3px solid #4682B4; display:flex; align-items:center; justify-content:center;
-  color:white; font-size:30px; font-weight:bold; text-align:center;
-  padding:20px; z-index:1; box-shadow:0 0 25px rgba(0,0,0,0.4);
+  border:3px solid #4682B4; box-shadow:0 0 25px rgba(0,0,0,0.4);
+  background:#000;
 }
-#lyricsDisplay::before {
-  content:""; position:absolute; top:0; left:0; width:200%; height:200%;
-  background:conic-gradient(from 0deg,#1a2a6c,#b21f1f,#fdbb2d,#1a2a6c);
-  animation:rotateGradient 12s linear infinite; z-index:0; opacity:0.6;
+#recordCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+#downloadLink {
+  display:none; margin-top:10px; color:#FFD700; font-weight:bold; text-decoration:none;
+  background: rgba(0,0,0,0.3); padding:10px 18px; border-radius:50px;
 }
-@keyframes rotateGradient { 0%{transform:rotate(0deg);}100%{transform:rotate(360deg);} }
-#lyricsDisplay::after {
-  content:""; position:absolute; inset:0; background:rgba(0,0,0,0.45); z-index:1;
-}
-#lyricsDisplay span { position:relative; z-index:2; }
-.current-word {
-  color:#FFD700; text-shadow:0 0 20px #FFD700,0 0 40px #FFD700,0 0 60px #FFD700;
-  animation:glow 1.5s ease-in-out infinite alternate;
-}
-@keyframes glow { from{text-shadow:0 0 10px #FFD700;} to{text-shadow:0 0 25px #FFFF33;} }
+.note { font-size:12px; opacity:0.85; margin-top:10px; text-align:left; line-height:1.6; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>🎵 Perfect Synchronized Lyrics GitHub 🎵</h1>
-  <textarea id="urduInput" placeholder="اردو پیراگراف یہاں لکھیں"></textarea><br><br>
-  <button onclick="loadParagraph()">پیراگراف لوڈ کریں</button>
-  <button onclick="startSynchronized()">آواز شروع کریں / روکیں</button>
-  <button id="recordBtn">🎬 Start Recording</button>
-  <a id="downloadLink" style="display:none;margin-left:10px;">⬇️ Download MP4</a>
-  <div id="status"></div>
-  <div id="lyricsDisplay">لفظ یہاں دکھائی دے گا</div>
+  <h1>🎵 Urdu → English Captions + Voice + Video 🎵</h1>
+
+  <textarea id="urduInput" placeholder="یہاں اردو پیراگراف لکھیں یا پیسٹ کریں"></textarea>
+
+  <div>
+    <button id="translateBtn" onclick="translateInput()">1️⃣ انگلش میں ترجمہ کریں</button>
+  </div>
+
+  <div id="translatedBox"></div>
+
+  <div>
+    <button id="playBtn" onclick="startPreview()" disabled>2️⃣ پریویو سنیں</button>
+    <button id="recordBtn" disabled>3️⃣ ریکارڈ کریں اور MP4 ڈاؤن لوڈ کریں</button>
+  </div>
+
+  <div id="status">پہلے اردو ٹیکسٹ لکھ کر "ترجمہ کریں" دبائیں</div>
+
+  <div class="captionWrap">
+    <canvas id="recordCanvas" width="1280" height="400"></canvas>
+  </div>
+
+  <a id="downloadLink">⬇️ ویڈیو ڈاؤن لوڈ کریں</a>
+
+  <p class="note">
+    "ریکارڈ کریں" دبانے پر ایک ہی بار پرمیشن باکس آئے گا (صرف آواز ریکارڈ کرنے کی اجازت کیلئے — یہ براؤزر کی سیکیورٹی
+    پابندی ہے، اس کے بغیر کوئی بھی ویب سائٹ آپ کی آواز ریکارڈ نہیں کر سکتی)۔ اس باکس میں <b>"This Tab"</b> اور
+    <b>"Share tab audio"</b> ضرور منتخب کریں۔ ویڈیو میں صرف اوپر والا باکس (کردار + کیپشن) نظر آئے گا، پوری اسکرین نہیں۔
+  </p>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.4/dist/ffmpeg.min.js"></script>
 <script>
-const paragraphDictionary = {
-  "صبح کی پہلی کرن نے دنیا کو جگا دیا۔ چڑیاں درختوں پر چہچہا رہی تھیں، اور ہوا کے ساتھ پھولوں کی خوشبو ہر طرف پھیل رہی تھی۔ میں نے کھڑکی سے باہر دیکھا، تو دیکھا کہ یہ ایک خوبصورت دن ہے۔ میں ٹھیک ہوں، آپ کیسے ہیں؟ شکریہ کہ آپ نے میرا خیال رکھا۔ الوداع، ملتے ہیں کل۔":
-  "The first ray of morning woke up the world. Birds were chirping on trees, and the fragrance of flowers spread everywhere with the wind. I looked out the window and saw that it was a beautiful day. I am fine, how are you? Thank you for caring about me. Goodbye, see you tomorrow."
-};
+const statusDiv = document.getElementById('status');
+const translatedBox = document.getElementById('translatedBox');
+const translateBtn = document.getElementById('translateBtn');
+const playBtn = document.getElementById('playBtn');
+const recordBtn = document.getElementById('recordBtn');
+const downloadLink = document.getElementById('downloadLink');
+const canvas = document.getElementById('recordCanvas');
+const ctx = canvas.getContext('2d');
 
-function loadParagraph(){
-  const urduParagraph=Object.keys(paragraphDictionary)[0];
-  document.getElementById('urduInput').value=urduParagraph;
+let translatedText = "";
+let isPreviewPlaying = false;
+let recorder, chunks = [];
+
+// ---------- 1. Real Urdu -> English translation (free MyMemory API) ----------
+async function translateChunk(chunk) {
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=ur|en`;
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (netErr) {
+    throw new Error('Translation server tak pahunch nahi sake (internet ya block): ' + netErr.message);
+  }
+  if (!res.ok) throw new Error('Translation server error, status: ' + res.status);
+  const data = await res.json();
+  const text = data?.responseData?.translatedText || '';
+  const status = Number(data?.responseStatus);
+  // This API can answer HTTP 200 but put a warning/limit message in the text field, so check for it
+  if ((!Number.isNaN(status) && status !== 200) || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(text)) {
+    throw new Error('Translation service message: ' + (data?.responseDetails || text || ('status ' + data?.responseStatus)));
+  }
+  return text;
 }
 
-let isPlaying=false;
-let recorder, chunks=[];
+// Free API accepts only short requests, so cut long Urdu text into small pieces
+function splitForApi(text, maxLen = 180) {
+  const sentences = text.match(/[^۔!؟.?!]+[۔!؟.?!]?/g)?.map(s => s.trim()).filter(Boolean) || [text];
+  const out = [];
+  for (const s of sentences) {
+    if (s.length <= maxLen) { out.push(s); continue; }
+    let cur = '';
+    for (const word of s.split(/\s+/)) {
+      if ((cur + ' ' + word).trim().length > maxLen) { out.push(cur.trim()); cur = word; }
+      else cur += ' ' + word;
+    }
+    if (cur.trim()) out.push(cur.trim());
+  }
+  return out;
+}
 
-function startSynchronized(){
-  const urduInput=document.getElementById('urduInput').value.trim();
-  const statusDiv=document.getElementById('status');
-  const lyricsDisplay=document.getElementById('lyricsDisplay');
-  if(!urduInput){ statusDiv.innerHTML='<p style="color:red">⚠ پہلے پیراگراف لوڈ کریں</p>'; return;}
-  if(isPlaying){ speechSynthesis.cancel(); isPlaying=false;
-    lyricsDisplay.textContent="⏸️ روک دیا گیا";
-    statusDiv.innerHTML='<p style="color:orange">⏹️ آواز بند ہو گئی</p>'; return;
+async function translateInput() {
+  const urduInput = document.getElementById('urduInput').value.trim();
+  if (!urduInput) {
+    statusDiv.innerHTML = '<p style="color:#ff8080">⚠ پہلے اردو ٹیکسٹ لکھیں</p>';
+    return;
+  }
+  translateBtn.disabled = true; playBtn.disabled = true; recordBtn.disabled = true;
+  statusDiv.innerHTML = '<p style="color:#ffd966">⏳ ترجمہ ہو رہا ہے...</p>';
+  translatedBox.style.display = 'none';
+
+  try {
+    // Keep punctuation attached to each piece (instead of stripping it) so translation preserves it
+    const rawChunks = splitForApi(urduInput);
+    let pieces = [];
+    for (const c of rawChunks) pieces.push(await translateChunk(c));
+    translatedText = pieces.join(' ').replace(/\s+/g, ' ').trim();
+
+    translatedBox.style.display = 'block';
+    translatedBox.textContent = translatedText;
+    statusDiv.innerHTML = '<p style="color:lightgreen">✅ ترجمہ مکمل</p>';
+    playBtn.disabled = false;
+    recordBtn.disabled = false;
+  } catch (err) {
+    console.error(err);
+    const detail = (err && err.message) ? err.message : String(err);
+    statusDiv.innerHTML = '<p style="color:#ff8080">❌ ترجمہ نہیں ہو سکا</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+  } finally {
+    translateBtn.disabled = false;
+  }
+}
+
+// ---------- Shared: pick an English voice once available ----------
+function pickEnglishVoice(utter) {
+  const setVoice = () => {
+    const voices = speechSynthesis.getVoices();
+    utter.voice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+  };
+  if (speechSynthesis.getVoices().length) setVoice();
+  else speechSynthesis.onvoiceschanged = setVoice;
+}
+
+// ===== VISUALS START =====
+// Everything drawn on the canvas: animated background, talking robot, lyrics panel.
+// What you see in the box is exactly what gets recorded into the video.
+
+// Words currently shown, and the state that makes the robot's mouth move
+const live = { prev: '', cur: '', next: '' };
+const charState = { speaking: false, energy: 0, sawBoundary: false, lastT: null };
+
+// Rounded-rectangle path (own helper so it works in every browser)
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ----- Animated background scenes (each one is a pure function of time t, in seconds) -----
+const SCENE_LEN = 6;   // seconds each background stays
+const FADE_LEN = 1.2;  // seconds of smooth blend into the next one
+
+function sceneAurora(t, w, h) {
+  const hue = (t * 18) % 360;
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, `hsl(${hue},80%,32%)`);
+  g.addColorStop(1, `hsl(${(hue + 70) % 360},85%,40%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 5; i++) {
+    const x = w * (0.5 + 0.42 * Math.sin(t * 0.35 + i * 1.7));
+    const y = h * (0.5 + 0.42 * Math.cos(t * 0.28 + i * 2.3));
+    const r = h * (0.9 + 0.2 * Math.sin(t * 0.5 + i));
+    const c = (hue + i * 55) % 360;
+    const og = ctx.createRadialGradient(x, y, 0, x, y, r);
+    og.addColorStop(0, `hsla(${c},95%,60%,0.6)`);
+    og.addColorStop(1, `hsla(${c},95%,60%,0)`);
+    ctx.fillStyle = og;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function sceneConic(t, w, h) {
+  ctx.fillStyle = '#0b1026';
+  ctx.fillRect(0, 0, w, h);
+  if (ctx.createConicGradient) {
+    const g = ctx.createConicGradient(t * 0.4, w / 2 + Math.sin(t * 0.5) * w * 0.15, h / 2);
+    const stops = ['#1a2a6c', '#b21f1f', '#fdbb2d', '#00c9a7', '#7b2ff7', '#1a2a6c'];
+    stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
+    const keep = ctx.globalAlpha;
+    ctx.globalAlpha = keep * 0.75;
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = keep;
+  }
+}
+
+function sceneWaves(t, w, h) {
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#16384f');
+  bg.addColorStop(0.5, '#26667f');
+  bg.addColorStop(1, '#2f8a8f');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  const cols = ['rgba(255,215,0,0.32)', 'rgba(0,230,190,0.34)', 'rgba(150,80,255,0.36)', 'rgba(255,100,140,0.34)'];
+  cols.forEach((col, k) => {
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 16) {
+      const y = h * (0.45 + k * 0.1)
+        + Math.sin(x * 0.008 + t * (0.8 + k * 0.3) + k * 2) * h * 0.09
+        + Math.sin(x * 0.015 - t * 0.6) * h * 0.04;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = col;
+    ctx.fill();
+  });
+}
+
+function sceneBokeh(t, w, h) {
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, '#2a0f5a');
+  g.addColorStop(1, '#5a1068');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 36; i++) {
+    const seed = i * 97.13;
+    const speed = 0.04 + (Math.sin(seed) * 0.5 + 0.5) * 0.08;
+    const x = (Math.sin(seed * 1.3) * 0.5 + 0.5) * w + Math.sin(t * 0.6 + i) * 30;
+    const y = h * (1.1 - ((t * speed + (Math.cos(seed) * 0.5 + 0.5)) % 1.2));
+    const r = 14 + (Math.sin(seed * 2.1) * 0.5 + 0.5) * 46;
+    const hue = (seed * 7 + t * 15) % 360;
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, `hsla(${hue},95%,68%,0.85)`);
+    rg.addColorStop(1, `hsla(${hue},95%,68%,0)`);
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const bgScenes = [sceneAurora, sceneConic, sceneWaves, sceneBokeh];
+
+function drawBackground(t, w, h) {
+  const idx = Math.floor(t / SCENE_LEN);
+  const local = t - idx * SCENE_LEN;
+  bgScenes[idx % bgScenes.length](t, w, h);
+  if (local > SCENE_LEN - FADE_LEN) {
+    ctx.save();
+    ctx.globalAlpha = (local - (SCENE_LEN - FADE_LEN)) / FADE_LEN;
+    bgScenes[(idx + 1) % bgScenes.length](t, w, h);
+    ctx.restore();
+  }
+}
+
+// ----- The robot character (an original design) -----
+function drawCharacter(t) {
+  const cx = 175;
+
+  // Mouth energy: jumps to 1 on every spoken word, then fades, so the mouth closes in the pauses
+  const dt = charState.lastT === null ? 0 : Math.max(0, t - charState.lastT);
+  charState.lastT = t;
+  charState.energy *= Math.exp(-dt / 0.22);
+  // If the voice never reports word events, keep talking steadily while speech is playing
+  const e = charState.speaking ? (charState.sawBoundary ? charState.energy : 0.6) : 0;
+  const talk = charState.speaking ? e * (0.35 + 0.65 * Math.abs(Math.sin(t * 13))) : 0;
+  const bob = Math.sin(t * 2.2) * 3 - e * 4 * Math.abs(Math.sin(t * 9));
+
+  // soft glow behind the character, a little stronger while talking
+  const glow = ctx.createRadialGradient(cx, 200, 20, cx, 200, 200);
+  glow.addColorStop(0, `rgba(255,255,255,${0.1 + 0.2 * e})`);
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 360, 400);
+
+  // ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(cx, 378, 92, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // arms (behind the body): right arm waves while speaking
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#2b8a9e';
+  ctx.lineWidth = 18;
+  const lHandX = cx - 94, lHandY = 344 + Math.sin(t * 1.5 + 1) * 3;
+  const rHandX = cx + 96 + (charState.speaking ? Math.sin(t * 7) * 8 : 0);
+  const rHandY = charState.speaking
+    ? 306 - e * 30 - (0.5 + 0.5 * Math.sin(t * 5)) * 14
+    : 344 + Math.sin(t * 1.5) * 3;
+  ctx.beginPath(); ctx.moveTo(cx - 58, 296 + bob * 0.5); ctx.lineTo(lHandX, lHandY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 58, 296 + bob * 0.5); ctx.lineTo(rHandX, rHandY); ctx.stroke();
+  ctx.fillStyle = '#e8f4ff';
+  ctx.strokeStyle = '#12354a';
+  ctx.lineWidth = 4;
+  [[lHandX, lHandY], [rHandX, rHandY]].forEach(([hx, hy2]) => {
+    ctx.beginPath(); ctx.arc(hx, hy2, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  });
+
+  // body
+  const bg = ctx.createLinearGradient(0, 262, 0, 376);
+  bg.addColorStop(0, '#3cb0c6');
+  bg.addColorStop(1, '#1f6f86');
+  rr(cx - 64, 264 + bob * 0.5, 128, 112, 30);
+  ctx.fillStyle = bg; ctx.fill();
+  ctx.strokeStyle = '#12354a'; ctx.lineWidth = 5; ctx.stroke();
+  // chest panel + light that pulses with speech
+  rr(cx - 36, 294 + bob * 0.5, 72, 46, 14);
+  ctx.fillStyle = 'rgba(18,53,74,0.85)'; ctx.fill();
+  ctx.shadowColor = `hsl(${(t * 80) % 360},95%,65%)`;
+  ctx.shadowBlur = 10 + 14 * e;
+  ctx.fillStyle = `hsla(${(t * 80) % 360},95%,65%,${0.55 + 0.45 * e})`;
+  ctx.beginPath(); ctx.arc(cx, 317 + bob * 0.5, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // neck
+  ctx.fillStyle = '#1f6f86';
+  ctx.fillRect(cx - 16, 246 + bob, 32, 26);
+
+  // head
+  const hy = 92 + bob;
+  const hg = ctx.createLinearGradient(0, hy, 0, hy + 152);
+  hg.addColorStop(0, '#f4faff');
+  hg.addColorStop(1, '#b7d6f0');
+  // ears
+  ctx.fillStyle = '#2b8a9e'; ctx.strokeStyle = '#12354a'; ctx.lineWidth = 4;
+  rr(cx - 102, hy + 52, 20, 50, 9); ctx.fill(); ctx.stroke();
+  rr(cx + 82, hy + 52, 20, 50, 9); ctx.fill(); ctx.stroke();
+  // antenna with a glowing ball
+  ctx.strokeStyle = '#12354a'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(cx, hy + 2); ctx.lineTo(cx, hy - 24); ctx.stroke();
+  const ah = (t * 60) % 360;
+  ctx.shadowColor = `hsl(${ah},100%,60%)`; ctx.shadowBlur = 14;
+  ctx.fillStyle = `hsl(${ah},100%,62%)`;
+  ctx.beginPath(); ctx.arc(cx, hy - 32, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  // head shape
+  rr(cx - 86, hy, 172, 152, 40);
+  ctx.fillStyle = hg; ctx.fill();
+  ctx.strokeStyle = '#12354a'; ctx.lineWidth = 5; ctx.stroke();
+
+  // face screen
+  rr(cx - 68, hy + 18, 136, 118, 28);
+  ctx.fillStyle = '#161d3d'; ctx.fill();
+  ctx.strokeStyle = '#0c1128'; ctx.lineWidth = 3; ctx.stroke();
+
+  // eyes (with blinking)
+  const bp = t % 3.7;
+  let blink = 1;
+  if (bp > 3.55) blink = Math.max(0.08, 1 - Math.sin(((bp - 3.55) / 0.15) * Math.PI));
+  const eyeY = hy + 58;
+  [-32, 32].forEach((dx) => {
+    ctx.shadowColor = '#6ff3ff'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#6ff3ff';
+    ctx.beginPath(); ctx.ellipse(cx + dx, eyeY, 13, 17 * blink, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(cx + dx - 4, eyeY - 6 * blink, 4 * blink, 0, Math.PI * 2); ctx.fill();
+  });
+  // eyebrows lift a little while talking
+  ctx.strokeStyle = 'rgba(111,243,255,0.85)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  const browY = hy + 32 - e * 5;
+  ctx.beginPath(); ctx.moveTo(cx - 46, browY + 3); ctx.lineTo(cx - 18, browY - 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 18, browY - 2); ctx.lineTo(cx + 46, browY + 3); ctx.stroke();
+  // cheeks
+  ctx.fillStyle = 'rgba(255,120,160,0.35)';
+  ctx.beginPath(); ctx.arc(cx - 52, hy + 94, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 52, hy + 94, 10, 0, Math.PI * 2); ctx.fill();
+
+  // mouth: smile when quiet, opens and closes with the speech
+  const mx = cx, my = hy + 100;
+  if (talk < 0.06) {
+    ctx.strokeStyle = '#6ff3ff'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(mx, my - 8, 22, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  } else {
+    const mw = 54 - 12 * talk;
+    const mh = 8 + 34 * talk;
+    const mxl = mx - mw / 2, myt = my - 8;
+    rr(mxl, myt, mw, mh, Math.min(mh / 2, 16));
+    ctx.fillStyle = '#0a0e22'; ctx.fill();
+    ctx.strokeStyle = '#6ff3ff'; ctx.lineWidth = 4; ctx.stroke();
+    if (mh > 22) {
+      ctx.save();
+      rr(mxl, myt, mw, mh, Math.min(mh / 2, 16));
+      ctx.clip();
+      ctx.fillStyle = '#ff6f91';
+      ctx.beginPath(); ctx.ellipse(mx, myt + mh, mw * 0.32, mh * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+// ----- One full frame: background, character, lyrics on a dark panel -----
+function drawFrame(prev, cur, next, t) {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  drawBackground(t, w, h);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(0, 0, w, h);
+
+  drawCharacter(t);
+
+  // dark rounded panel so the lyrics are always easy to read, whatever the background is doing
+  const px = 350, py = 105, pw = w - px - 40, ph = 190;
+  rr(px, py, pw, ph, 28);
+  ctx.fillStyle = 'rgba(8,6,28,0.72)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // frame border
+  ctx.strokeStyle = '#4682B4';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(4, 4, w - 8, h - 8);
+
+  ctx.textBaseline = 'middle';
+  const cy = py + ph / 2;
+  const centerX = px + pw / 2;
+
+  if (!prev && !cur && !next) {
+    ctx.textAlign = 'center';
+    ctx.font = '600 36px Segoe UI, Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.fillText('Captions will appear here', centerX, cy);
+    ctx.textAlign = 'left';
+    return;
   }
 
-  let englishText=paragraphDictionary[urduInput];
-  if(!englishText){ statusDiv.innerHTML='<p style="color:red">❌ یہ پیراگراف ڈکشنری میں نہیں ہے</p>'; return; }
+  // measure, and shrink everything if a long word would not fit inside the panel
+  const gap0 = 26;
+  ctx.font = 'bold 46px Segoe UI, Arial, sans-serif';
+  const prevW0 = prev ? ctx.measureText(prev).width + gap0 : 0;
+  const nextW0 = next ? ctx.measureText(next).width + gap0 : 0;
+  ctx.font = 'bold 58px Segoe UI, Arial, sans-serif';
+  const curW0 = ctx.measureText(cur).width;
+  const total0 = prevW0 + curW0 + nextW0;
+  const k = Math.min(1, (pw - 60) / total0);
+  const smallFont = `bold ${Math.round(46 * k)}px Segoe UI, Arial, sans-serif`;
+  const bigFont = `bold ${Math.round(58 * k)}px Segoe UI, Arial, sans-serif`;
 
-  isPlaying=true;
-  statusDiv.innerHTML='<p style="color:lightgreen">🔊 آواز چل رہی ہے...</p>';
-  lyricsDisplay.textContent="";
+  ctx.textAlign = 'left';
+  let x = centerX - (total0 * k) / 2;
 
-  const utter=new SpeechSynthesisUtterance(englishText);
-  utter.lang='en-US'; utter.rate=0.75;
-  const voices=speechSynthesis.getVoices();
-  utter.voice=voices.find(v=>v.name.includes("Google US English"))||voices[0];
+  if (prev) {
+    ctx.font = smallFont;
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(prev, x, cy);
+    ctx.shadowBlur = 0;
+    x += prevW0 * k;
+  }
 
-  const words=englishText.split(/\s+/);
-  utter.onboundary=(e)=>{
-    if(e.charIndex!==undefined){
-      const spoken=englishText.substring(0,e.charIndex);
-      const count=spoken.split(/\s+/).filter(w=>w.trim()!=="").length;
-      const prev=words[count-1]||"",cur=words[count]||"",next=words[count+1]||"";
-      lyricsDisplay.innerHTML=`
-        <span style="opacity:0.4">${prev.replace(/[.,?!]/g,'')}</span>
-        &nbsp;<span class="current-word">${cur.replace(/[.,?!]/g,'')}</span>
-        &nbsp;<span style="opacity:0.4">${next.replace(/[.,?!]/g,'')}</span>`;
-    }
-  };
-  utter.onend=()=>{isPlaying=false;lyricsDisplay.innerHTML='<span style="color:#4CAF50">✅ مکمل!</span>';statusDiv.innerHTML='<p style="color:lightgreen">✅ مکمل!</p>';};
-  speechSynthesis.cancel(); speechSynthesis.speak(utter);
+  // current word: dark outline first so the gold stays readable, then gold with a glow
+  ctx.font = bigFont;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(25,10,45,0.7)';
+  ctx.strokeText(cur, x, cy);
+  ctx.fillStyle = '#FFD700';
+  ctx.shadowColor = '#FFD700';
+  ctx.shadowBlur = 25;
+  ctx.fillText(cur, x, cy);
+  ctx.shadowBlur = 0;
+  x += (curW0 + (next ? gap0 : 0)) * k;
+
+  if (next) {
+    ctx.font = smallFont;
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(next, x, cy);
+    ctx.shadowBlur = 0;
+  }
+}
+// ===== VISUALS END =====
+
+// ---------- Always-running draw loop (idle, preview and recording all use it) ----------
+let sceneT0 = performance.now();
+(function masterLoop() {
+  drawFrame(live.prev, live.cur, live.next, (performance.now() - sceneT0) / 1000);
+  requestAnimationFrame(masterLoop);
+})();
+
+function setLiveWords(words, count) {
+  live.prev = words[count - 1] || '';
+  live.cur = words[count] || '';
+  live.next = words[count + 1] || '';
 }
 
-/* ===== Recording + MP4 conversion ===== */
-document.getElementById("recordBtn").addEventListener("click", async()=>{
-  const scene=document.querySelector(".container");
-  const stream=scene.captureStream(30);
-  recorder=new MediaRecorder(stream,{mimeType:"video/webm"});
-  chunks=[];
-  recorder.ondataavailable=e=>chunks.push(e.data);
-  recorder.onstop=async()=>{
-    const blob=new Blob(chunks,{type:"video/webm"});
-    const buffer=await blob.arrayBuffer();
-    const {createFFmpeg,fetchFile}=FFmpeg;
-    const ffmpeg=createFFmpeg({log:true});
-    await ffmpeg.load();
-    await ffmpeg.FS("writeFile","input.webm",new Uint8Array(buffer));
-    await ffmpeg.run("-i","input.webm","output.mp4");
-    const data=ffmpeg.FS("readFile","output.mp4");
-    const url=URL.createObjectURL(new Blob([data.buffer],{type:"video/mp4"}));
-    const link=document.getElementById("downloadLink");
-    link.href=url; link.download="dua_video.mp4";
-    link.style.display="inline-block";
+function beginSpeakingVisuals(words) {
+  sceneT0 = performance.now();           // backgrounds start from the first scene
+  charState.speaking = true;
+  charState.energy = 0;
+  charState.sawBoundary = false;
+  charState.lastT = null;
+  setLiveWords(words, 0);
+}
+
+function endSpeakingVisuals() {
+  charState.speaking = false;
+}
+
+function clearLiveWords() {
+  live.prev = ''; live.cur = ''; live.next = '';
+}
+
+function handleWordBoundary(words, e) {
+  if (e.charIndex === undefined) return;
+  if (e.name && e.name !== 'word') return;
+  const spoken = translatedText.substring(0, e.charIndex);
+  const count = spoken.split(/\s+/).filter(w => w.trim() !== '').length;
+  setLiveWords(words, count);
+  charState.energy = 1;
+  charState.sawBoundary = true;
+}
+
+// ---------- 2. Preview (same picture as the recording) ----------
+let currentPreviewUtter = null;
+
+function startPreview() {
+  if (!translatedText) return;
+  if (isPreviewPlaying) {
+    currentPreviewUtter = null;
+    speechSynthesis.cancel();
+    isPreviewPlaying = false;
+    endSpeakingVisuals();
+    clearLiveWords();
+    return;
+  }
+  isPreviewPlaying = true;
+  statusDiv.innerHTML = '<p style="color:lightgreen">🔊 پریویو چل رہا ہے...</p>';
+
+  const utter = new SpeechSynthesisUtterance(translatedText);
+  utter.lang = 'en-US'; utter.rate = 0.85;
+  pickEnglishVoice(utter);
+  currentPreviewUtter = utter;
+
+  const words = translatedText.split(/\s+/);
+  beginSpeakingVisuals(words);
+
+  utter.onboundary = (e) => handleWordBoundary(words, e);
+  const finish = () => {
+    if (utter !== currentPreviewUtter) return; // an older preview ending late must not stop a newer one
+    currentPreviewUtter = null;
+    isPreviewPlaying = false;
+    endSpeakingVisuals();
+    clearLiveWords();
+    statusDiv.innerHTML = '<p style="color:lightgreen">✅ پریویو مکمل</p>';
   };
-  recorder.start();
-  document.getElementById("status").innerHTML="<p style='color:yellow'>🔴 Recording started... Speak Dua!</p>";
-  await startSynchronized();
-  setTimeout(()=>{ recorder.stop(); document.getElementById("status").innerHTML="<p style='color:lightgreen'>✅ Recording complete</p>"; },15000);
+  utter.onend = finish;
+  utter.onerror = finish;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utter);
+}
+
+// ---------- 3. Record the canvas (character + captions) with the real browser voice ----------
+recordBtn.addEventListener('click', async () => {
+  if (!translatedText) {
+    statusDiv.innerHTML = '<p style="color:#ff8080">⚠ پہلے ترجمہ کریں</p>';
+    return;
+  }
+  // stop any running preview first
+  currentPreviewUtter = null;
+  isPreviewPlaying = false;
+  endSpeakingVisuals();
+  speechSynthesis.cancel();
+  recordBtn.disabled = true; playBtn.disabled = true; translateBtn.disabled = true;
+  downloadLink.style.display = 'none';
+
+  let displayStream;
+  try {
+    statusDiv.innerHTML = '<p style="color:#ffd966">🔐 اجازت کا باکس کھلے گا — "This Tab" اور "Share tab audio" منتخب کریں</p>';
+
+    // Get permission ONLY to capture this tab's audio (video part is discarded immediately)
+    displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    displayStream.getVideoTracks().forEach(t => t.stop()); // we don't need their video, only audio
+
+    const audioTracks = displayStream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      throw new Error('آڈیو شیئر نہیں کی گئی — دوبارہ کوشش کریں اور "Share tab audio" کا بکس ضرور آن کریں');
+    }
+
+    const videoStream = canvas.captureStream(30);
+    const combinedStream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+
+    // Ask the browser to record MP4 directly; fall back to WEBM only if MP4 is not supported
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    const chosenType = candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    const isMp4 = chosenType.startsWith('video/mp4');
+    recorder = chosenType ? new MediaRecorder(combinedStream, { mimeType: chosenType }) : new MediaRecorder(combinedStream);
+    chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    recorder.onstop = () => {
+      displayStream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: recorder.mimeType || chosenType || 'video/webm' });
+      downloadLink.href = URL.createObjectURL(blob);
+      downloadLink.download = isMp4 ? 'caption_video.mp4' : 'caption_video.webm';
+      downloadLink.textContent = isMp4 ? '⬇️ MP4 ویڈیو ڈاؤن لوڈ کریں' : '⬇️ ویڈیو ڈاؤن لوڈ کریں (WEBM — اس براؤزر میں MP4 ریکارڈنگ دستیاب نہیں)';
+      downloadLink.style.display = 'inline-block';
+      statusDiv.innerHTML = '<p style="color:lightgreen">✅ ویڈیو تیار ہے</p>';
+      recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
+      clearLiveWords();
+    };
+
+    const utter = new SpeechSynthesisUtterance(translatedText);
+    utter.lang = 'en-US'; utter.rate = 0.85;
+    pickEnglishVoice(utter);
+    const words = translatedText.split(/\s+/);
+
+    recorder.start();
+    statusDiv.innerHTML = '<p style="color:lightgreen">🔴 ریکارڈنگ ہو رہی ہے...</p>';
+    beginSpeakingVisuals(words);
+
+    utter.onboundary = (e) => handleWordBoundary(words, e);
+    utter.onend = () => {
+      endSpeakingVisuals();
+      // short pause so the last frames (mouth closing) are captured too
+      setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop(); }, 600);
+    };
+    utter.onerror = () => {
+      endSpeakingVisuals();
+      if (recorder.state !== 'inactive') recorder.stop();
+    };
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utter);
+
+  } catch (err) {
+    console.error(err);
+    const detail = (err && err.message) ? err.message : String(err);
+    statusDiv.innerHTML = '<p style="color:#ff8080">❌ ریکارڈنگ نہیں ہو سکی</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+    recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
+    endSpeakingVisuals();
+    if (displayStream) displayStream.getTracks().forEach(t => t.stop());
+  }
 });
 </script>
 </body>
