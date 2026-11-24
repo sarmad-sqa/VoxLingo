@@ -3,97 +3,400 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Urdu to English Synchronized Captions + Video Download</title>
+<title>VoxLingo — Urdu to English Captions</title>
+<meta name="description" content="Translate Urdu to English, preview speech, and download a captioned video.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Manrope:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
 <style>
-body {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(-45deg, #1e3c72, #2a5298, #764ba2, #667eea);
-  background-size: 400% 400%;
-  animation: gradientBG 15s ease infinite;
-  color: white;
-  margin: 0;
-  padding: 20px;
-}
-@keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 30px;
-  border-radius: 20px;
-  box-shadow: 0 0 25px rgba(0,0,0,0.4);
-  backdrop-filter: blur(6px);
-  text-align: center;
-}
-h1 { color: #FFD700; margin-bottom: 20px; font-weight: bold; letter-spacing: 1px; }
-textarea {
-  width: 100%; height: 130px; padding: 15px; box-sizing: border-box;
-  border: 2px solid #4a5568; border-radius: 12px;
-  background: rgba(0,0,0,0.3); color: white; font-size: 18px;
-  direction: rtl; margin-bottom: 10px;
-}
-button {
-  background: linear-gradient(45deg,#4CAF50,#45a049); color:white;
-  border:none; padding:12px 22px; border-radius:50px; cursor:pointer;
-  margin:6px 4px; font-weight:bold; font-size:14px;
-}
-button:disabled { opacity:0.5; cursor:not-allowed; }
-button:hover:not(:disabled) { transform:scale(1.05); background:linear-gradient(45deg,#3e8e41,#2e7031); }
-#recordBtn { background: linear-gradient(45deg,#e74c3c,#c0392b); }
-#recordBtn:hover:not(:disabled) { background: linear-gradient(45deg,#c0392b,#922b21); }
-#status { margin:15px 0; padding:12px; border-radius:12px; background:rgba(255,255,255,0.15); min-height: 20px; }
-#translatedBox {
-  text-align:left; direction:ltr; background:rgba(0,0,0,0.25); border-radius:12px;
-  padding:12px 15px; margin:10px 0; min-height:20px; font-size:15px; display:none;
-}
-.captionWrap {
-  position: relative; width:100%; max-width:740px; aspect-ratio: 1280 / 400;
-  margin:0 auto; border-radius:15px; overflow:hidden;
-  border:3px solid #4682B4; box-shadow:0 0 25px rgba(0,0,0,0.4);
-  background:#000;
-}
-#recordCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
-#downloadLink {
-  display:none; margin-top:10px; color:#FFD700; font-weight:bold; text-decoration:none;
-  background: rgba(0,0,0,0.3); padding:10px 18px; border-radius:50px;
-}
-.note { font-size:12px; opacity:0.85; margin-top:10px; text-align:left; line-height:1.6; }
+  :root {
+    --bg: #0b0d10;
+    --bg-elev: #12161c;
+    --bg-soft: #181e27;
+    --line: rgba(232, 220, 198, 0.14);
+    --line-strong: rgba(232, 220, 198, 0.28);
+    --ink: #f4efe6;
+    --muted: #a79f91;
+    --accent: #d4a017;
+    --accent-soft: rgba(212, 160, 23, 0.16);
+    --ok: #7dbe74;
+    --danger: #d96b5c;
+    --danger-soft: rgba(217, 107, 92, 0.16);
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    --radius: 18px;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-sans: "Manrope", system-ui, sans-serif;
+    --font-urdu: "Noto Nastaliq Urdu", "Manrope", serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(212, 160, 23, 0.16), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(88, 140, 140, 0.12), transparent 50%),
+      linear-gradient(180deg, #10141a 0%, var(--bg) 42%, #090b0e 100%);
+    cursor: default;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image:
+      linear-gradient(rgba(244, 239, 230, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(244, 239, 230, 0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
+  }
+
+  .shell {
+    position: relative;
+    width: min(980px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: 2.25rem 0 3.5rem;
+  }
+
+  .brand {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    animation: rise 0.7s ease both;
+  }
+  .brand-mark {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .brand-kicker {
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .brand h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 650;
+    font-size: clamp(2.1rem, 5vw, 3.2rem);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+  .brand p {
+    margin: 0;
+    max-width: 34ch;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    text-align: right;
+  }
+
+  .stage {
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) + 6px);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 40%), var(--bg-elev);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: rise 0.8s ease 0.08s both;
+  }
+
+  .stage-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1.15rem;
+    border-bottom: 1px solid var(--line);
+    background: rgba(0,0,0,0.22);
+  }
+  .stage-head span {
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--ink);
+  }
+  .live-dot::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.55);
+    animation: pulse 1.8s ease infinite;
+  }
+
+  .captionWrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1280 / 400;
+    background: #000;
+  }
+  #recordCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .panel {
+    margin-top: 1.25rem;
+    display: grid;
+    gap: 1rem;
+    animation: rise 0.85s ease 0.14s both;
+  }
+
+  .block {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--bg-elev) 88%, black);
+    padding: 1.1rem 1.15rem 1.2rem;
+  }
+  .block-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+  }
+  .block-label h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 650;
+  }
+  .step {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  #urduInput {
+    width: 100%;
+    min-height: 140px;
+    resize: vertical;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: var(--bg-soft);
+    color: var(--ink);
+    font-family: var(--font-urdu);
+    font-size: 1.2rem;
+    line-height: 2;
+    padding: 0.95rem 1rem;
+    direction: rtl;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  #urduInput:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  #urduInput::placeholder { color: #7d766a; }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+  }
+
+  button, .btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    min-height: 44px;
+    padding: 0.7rem 1.15rem;
+    font-family: var(--font-sans);
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+  }
+  button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+  button:hover:not(:disabled) { transform: translateY(-1px); }
+  button:active:not(:disabled) { transform: translateY(0); }
+
+  #translateBtn {
+    background: var(--ink);
+    color: #121212;
+  }
+  #translateBtn:hover:not(:disabled) { background: #fff; }
+
+  #playBtn {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+  #playBtn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  #recordBtn {
+    background: var(--danger-soft);
+    color: #ffd2cb;
+    border-color: rgba(217, 107, 92, 0.45);
+  }
+  #recordBtn:hover:not(:disabled) {
+    background: rgba(217, 107, 92, 0.28);
+  }
+
+  #translatedBox {
+    display: none;
+    margin-top: 0.85rem;
+    text-align: left;
+    direction: ltr;
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed var(--line-strong);
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    font-size: 0.98rem;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+
+  #status {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    padding: 0.85rem 1rem;
+    min-height: 3rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+  #status p { margin: 0.15rem 0; }
+
+  #downloadLink {
+    display: none;
+    width: fit-content;
+    margin-top: 0.85rem;
+    text-decoration: none;
+    color: #1a1408;
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 0.8rem 1.25rem;
+    font-weight: 700;
+    box-shadow: 0 10px 30px rgba(212, 160, 23, 0.25);
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+  #downloadLink:hover { transform: translateY(-1px); filter: brightness(1.05); }
+
+  .note {
+    margin: 0.85rem 0 0;
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.65;
+  }
+  .note b { color: var(--ink); font-weight: 650; }
+
+  .footer-meta {
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    animation: rise 0.9s ease 0.2s both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(212, 160, 23, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(212, 160, 23, 0); }
+  }
+
+  @media (max-width: 720px) {
+    .shell { width: min(100% - 1.25rem, 980px); padding-top: 1.4rem; }
+    .brand { flex-direction: column; align-items: start; }
+    .brand p { text-align: left; max-width: none; }
+    .actions { flex-direction: column; }
+    .actions button, #downloadLink { width: 100%; text-align: center; justify-content: center; }
+    .footer-meta { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>🎵 Urdu → English Captions + Voice + Video 🎵</h1>
+  <div class="shell">
+    <header class="brand">
+      <div class="brand-mark">
+        <div class="brand-kicker">Caption studio</div>
+        <h1>VoxLingo</h1>
+      </div>
+      <p>Urdu text in. English speech, synced captions, and a downloadable video out.</p>
+    </header>
 
-  <textarea id="urduInput" placeholder="یہاں اردو پیراگراف لکھیں یا پیسٹ کریں"></textarea>
+    <section class="stage" aria-label="Caption preview stage">
+      <div class="stage-head">
+        <span>Preview stage</span>
+        <span class="live-dot">Live canvas</span>
+      </div>
+      <div class="captionWrap">
+        <canvas id="recordCanvas" width="1280" height="400"></canvas>
+      </div>
+    </section>
 
-  <div>
-    <button id="translateBtn" onclick="translateInput()">1️⃣ انگلش میں ترجمہ کریں</button>
+    <div class="panel">
+      <section class="block">
+        <div class="block-label">
+          <h2>Urdu input</h2>
+          <span class="step">Step 01</span>
+        </div>
+        <textarea id="urduInput" placeholder="یہاں اردو پیراگراف لکھیں یا پیسٹ کریں"></textarea>
+        <div class="actions">
+          <button id="translateBtn" type="button" onclick="translateInput()">Translate to English</button>
+        </div>
+        <div id="translatedBox" aria-live="polite"></div>
+      </section>
+
+      <section class="block">
+        <div class="block-label">
+          <h2>Voice &amp; export</h2>
+          <span class="step">Step 02</span>
+        </div>
+        <div class="actions">
+          <button id="playBtn" type="button" onclick="startPreview()" disabled>Preview speech</button>
+          <button id="recordBtn" type="button" disabled>Record &amp; prepare download</button>
+        </div>
+        <div id="status">پہلے اردو ٹیکسٹ لکھ کر Translate دبائیں</div>
+        <a id="downloadLink">Download video</a>
+        <p class="note">
+          Record dabate hi video ban-na shuru ho jati hai — screen share ki zaroorat nahi.
+          Complete hone ke baad neeche <b>Download video</b> link aa jata hai. Video mein sirf stage (character + captions) record hota hai.
+        </p>
+      </section>
+    </div>
+
+    <div class="footer-meta">
+      <span>VoxLingo · Urdu → English</span>
+      <span>No account · Runs in your browser</span>
+    </div>
   </div>
-
-  <div id="translatedBox"></div>
-
-  <div>
-    <button id="playBtn" onclick="startPreview()" disabled>2️⃣ پریویو سنیں</button>
-    <button id="recordBtn" disabled>3️⃣ ریکارڈ کریں اور MP4 ڈاؤن لوڈ کریں</button>
-  </div>
-
-  <div id="status">پہلے اردو ٹیکسٹ لکھ کر "ترجمہ کریں" دبائیں</div>
-
-  <div class="captionWrap">
-    <canvas id="recordCanvas" width="1280" height="400"></canvas>
-  </div>
-
-  <a id="downloadLink">⬇️ ویڈیو ڈاؤن لوڈ کریں</a>
-
-  <p class="note">
-    "ریکارڈ کریں" دبائیں — اب screen share کی ضرورت نہیں۔ آواز خود تیار ہو کر ویڈیو میں شامل ہو جاتی ہے،
-    پھر نیچے <b>ڈاؤن لوڈ</b> لنک آ جاتا ہے۔ ویڈیو میں صرف اوپر والا باکس (کردار + کیپشن) ریکارڈ ہوتا ہے۔
-  </p>
-</div>
 
 <script>
 const statusDiv = document.getElementById('status');
@@ -528,7 +831,7 @@ function drawFrame(prev, cur, next, t) {
   ctx.stroke();
 
   // frame border
-  ctx.strokeStyle = '#4682B4';
+  ctx.strokeStyle = '#c9a227';
   ctx.lineWidth = 8;
   ctx.strokeRect(4, 4, w - 8, h - 8);
 

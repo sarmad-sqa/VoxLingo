@@ -1,58 +1,41 @@
-# 🎵 VoxLingo
+# VoxLingo
 
-### Urdu to English Translation | Voice Preview | Synchronized Captions | MP4 Download
+### Urdu → English · Voice preview · Synced captions · Video download
 
-VoxLingo is a web-based application designed to convert Urdu text into English and provide voice playback with synchronized captions. Users can preview the translated content, record the output, and download it as an MP4 video.
+VoxLingo is a browser-based caption studio. Paste Urdu text, translate to English, preview speech with karaoke-style captions, then record the stage and download the video.
 
-## 🌐 Live Demo
+## Live demo
 
-[Visit VoxLingo](https://vox-lingo.vercel.app/)
+[vox-lingo.vercel.app](https://vox-lingo.vercel.app/)
 
-## ✨ Features
+## Features
 
-- **Urdu to English Translation:** Convert Urdu text into English.
-- **English Captions:** Display translated text as captions.
-- **Voice Preview:** Listen to the translated content.
-- **Audio Recording:** Record browser tab audio.
-- **MP4 Video Download:** Record and download the output as a video.
-- **Synchronized Experience:** Combine captions and voice in the recorded output.
+- Urdu → English translation (Google Translate, with MyMemory fallback)
+- Timed karaoke captions on a live canvas stage
+- Speech preview
+- Record & download without screen-share permission
+- Runs entirely in the browser — no account
 
-## 🚀 How to Use
+## How to use
 
-1. Open the [VoxLingo website](https://vox-lingo.vercel.app/).
-2. Enter your Urdu text.
-3. Click the translation button.
-4. Preview the translated English content.
-5. Listen to the voice output.
-6. Click the recording button to record and download the MP4 video.
-7. When prompted by the browser, select **This Tab** and enable **Share tab audio**.
+1. Open the [live site](https://vox-lingo.vercel.app/).
+2. Enter Urdu text.
+3. Click **Translate to English**.
+4. Click **Preview speech** to hear the result and watch captions.
+5. Click **Record & prepare download**.
+6. When recording finishes, use **Download video**.
 
-**Note:** Browser permission is required to capture tab audio during recording. The recording displays the designated content area rather than the entire screen.
+## UI
 
-## 🛠️ Technology
+The interface is a dark caption-studio layout: Fraunces for the brand, Manrope for UI, and Noto Nastaliq Urdu for input. The preview stage sits first; translate and export follow in clear steps.
 
-The project is currently maintained as a web application with its implementation in `index.html`.
+## Translation & troubleshooting
 
-For exact framework, library, and API details, refer to the source code.
+Translation tries **Google Translate** first, then **MyMemory** (with an email quota parameter). Results are cached in `sessionStorage`, and 429 responses are retried with short backoff.
 
-## 🔤 Translation & Troubleshooting
+Recording always finishes when captions complete (with a hard timeout backup), so the download link appears even if browser speech `onend` does not fire.
 
-Translation tries **Google Translate** first, then falls back to **MyMemory** (with an email quota parameter). Results are cached in `sessionStorage` for the browser session, and 429 rate-limit responses are retried with short backoff. If both providers are rate-limited, wait about a minute and try again.
+## Project links
 
-## 🔗 Project Links
-
-- **Live Website:** https://vox-lingo.vercel.app/
-- **GitHub Repository:** https://github.com/sarmad-sqa/VoxLingo
-
-## 👨‍💻 Developer
-
-**Sarmad Sarwar**
-
-QA Engineer | Software Quality Assurance | Automation Testing
-
-- GitHub: https://github.com/sarmad-sqa
-- LinkedIn: https://linkedin.com/in/sarmad-sarwar-98227a167
-
----
-
-*VoxLingo — Turning Urdu Text into English Voice and Captions.*
+- Live: https://vox-lingo.vercel.app/
+- Source: this repository (`index.html`)
