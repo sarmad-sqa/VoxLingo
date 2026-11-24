@@ -560,6 +560,8 @@ async function translateInput() {
 
     translatedBox.style.display = 'block';
     translatedBox.textContent = translatedText;
+    ttsCacheText = '';
+    ttsCacheBlob = null;
     statusDiv.innerHTML = '<p style="color:#0f766e">✅ ترجمہ مکمل</p>';
     playBtn.disabled = false;
     recordBtn.disabled = false;
@@ -1064,44 +1066,111 @@ function handleWordBoundary(tokens, e) {
   scheduleCaptionAdvance();
 }
 
-// ---------- 2. Preview (same picture as the recording) ----------
+// ---------- 2. Preview (same TTS voice as the downloaded video) ----------
 let currentPreviewUtter = null;
+let currentPreviewAudio = null;
+let previewObjectUrl = null;
+let ttsCacheText = '';
+let ttsCacheBlob = null;
+let previewToken = 0;
 
-function startPreview() {
+function stopPreviewPlayback() {
+  previewToken += 1;
+  currentPreviewUtter = null;
+  try { speechSynthesis.cancel(); } catch {}
+  if (currentPreviewAudio) {
+    try {
+      currentPreviewAudio.onended = null;
+      currentPreviewAudio.onerror = null;
+      currentPreviewAudio.ontimeupdate = null;
+      currentPreviewAudio.pause();
+    } catch {}
+    currentPreviewAudio = null;
+  }
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+  isPreviewPlaying = false;
+  endSpeakingVisuals();
+  clearLiveWords();
+}
+
+async function getTtsBlobCached(text) {
+  if (ttsCacheText === text && ttsCacheBlob) return ttsCacheBlob;
+  const blob = await fetchTtsBlob(text);
+  ttsCacheText = text;
+  ttsCacheBlob = blob;
+  return blob;
+}
+
+async function startPreview() {
   if (!translatedText) return;
   if (isPreviewPlaying) {
-    currentPreviewUtter = null;
-    speechSynthesis.cancel();
-    isPreviewPlaying = false;
-    endSpeakingVisuals();
-    clearLiveWords();
+    stopPreviewPlayback();
+    statusDiv.innerHTML = '<p style="color:#0f766e">⏹ پریویو روک دی گئی</p>';
     return;
   }
+
   isPreviewPlaying = true;
-  statusDiv.innerHTML = '<p style="color:#0f766e">🔊 پریویو چل رہا ہے...</p>';
+  const myToken = ++previewToken;
+  statusDiv.innerHTML = '<p style="color:#a16207">⏳ وہی آواز تیار ہو رہی ہے جو ویڈیو میں آئے گی...</p>';
+  playBtn.disabled = true;
 
-  const rate = 0.85;
-  const utter = new SpeechSynthesisUtterance(translatedText);
-  utter.lang = 'en-US'; utter.rate = rate;
-  pickEnglishVoice(utter);
-  currentPreviewUtter = utter;
+  try {
+    const blob = await getTtsBlobCached(translatedText);
+    if (myToken !== previewToken) return;
 
-  const tokens = tokenizeWords(translatedText);
-  beginSpeakingVisuals(tokens, rate);
-
-  utter.onboundary = (e) => handleWordBoundary(tokens, e);
-  const finish = () => {
-    if (utter !== currentPreviewUtter) return;
+    previewObjectUrl = URL.createObjectURL(blob);
+    const audio = new Audio(previewObjectUrl);
+    audio.preload = 'auto';
+    currentPreviewAudio = audio;
     currentPreviewUtter = null;
-    isPreviewPlaying = false;
-    endSpeakingVisuals();
-    clearLiveWords();
-    statusDiv.innerHTML = '<p style="color:#0f766e">✅ پریویو مکمل</p>';
-  };
-  utter.onend = finish;
-  utter.onerror = finish;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utter);
+
+    const tokens = tokenizeWords(translatedText);
+    beginSpeakingVisuals(tokens, 1, { timed: false });
+    audio.ontimeupdate = () => syncCaptionsFromAudio(tokens, audio);
+
+    const finish = () => {
+      if (myToken !== previewToken) return;
+      stopPreviewPlayback();
+      playBtn.disabled = false;
+      recordBtn.disabled = false;
+      statusDiv.innerHTML = '<p style="color:#0f766e">✅ پریویو مکمل</p>';
+    };
+    audio.onended = finish;
+    audio.onerror = finish;
+
+    statusDiv.innerHTML = '<p style="color:#0f766e">🔊 پریویو چل رہا ہے...</p>';
+    playBtn.disabled = false;
+    await audio.play();
+  } catch (err) {
+    console.warn('TTS preview failed, falling back to browser voice', err);
+    if (myToken !== previewToken) return;
+
+    // Fallback only if proxy is unavailable — may differ from download voice.
+    const rate = 0.85;
+    const utter = new SpeechSynthesisUtterance(translatedText);
+    utter.lang = 'en-US';
+    utter.rate = rate;
+    pickEnglishVoice(utter);
+    currentPreviewUtter = utter;
+    const tokens = tokenizeWords(translatedText);
+    beginSpeakingVisuals(tokens, rate, { timed: true });
+    utter.onboundary = (e) => handleWordBoundary(tokens, e);
+    const finish = () => {
+      if (myToken !== previewToken) return;
+      stopPreviewPlayback();
+      playBtn.disabled = false;
+      recordBtn.disabled = false;
+      statusDiv.innerHTML = '<p style="color:#0f766e">✅ پریویو مکمل</p>';
+    };
+    utter.onend = finish;
+    utter.onerror = finish;
+    speechSynthesis.cancel();
+    playBtn.disabled = false;
+    speechSynthesis.speak(utter);
+  }
 }
 
 // ---------- 3. Record canvas video (+ TTS audio when possible, no screen-share) ----------
@@ -1153,7 +1222,7 @@ async function fetchTtsBlob(text) {
 }
 
 async function prepareRecordedVoice(text) {
-  const blob = await fetchTtsBlob(text);
+  const blob = await getTtsBlobCached(text);
   const objectUrl = URL.createObjectURL(blob);
   const audioEl = new Audio(objectUrl);
   audioEl.preload = 'auto';
@@ -1180,10 +1249,7 @@ recordBtn.addEventListener('click', async () => {
     return;
   }
 
-  currentPreviewUtter = null;
-  isPreviewPlaying = false;
-  endSpeakingVisuals();
-  speechSynthesis.cancel();
+  stopPreviewPlayback();
   recordBtn.disabled = true; playBtn.disabled = true; translateBtn.disabled = true;
   downloadLink.style.display = 'none';
 
