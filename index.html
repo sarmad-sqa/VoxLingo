@@ -602,37 +602,95 @@ let sceneT0 = performance.now();
   requestAnimationFrame(masterLoop);
 })();
 
-function setLiveWords(words, count) {
-  live.prev = words[count - 1] || '';
-  live.cur = words[count] || '';
-  live.next = words[count + 1] || '';
+function tokenizeWords(text) {
+  const tokens = [];
+  const re = /\S+/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    tokens.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+  }
+  return tokens;
 }
 
-function beginSpeakingVisuals(words) {
-  sceneT0 = performance.now();           // backgrounds start from the first scene
+function setLiveWords(tokens, count) {
+  live.prev = tokens[count - 1]?.text || '';
+  live.cur = tokens[count]?.text || '';
+  live.next = tokens[count + 1]?.text || '';
+}
+
+let captionTimer = null;
+let captionIndex = 0;
+let captionTokens = [];
+let captionRate = 0.85;
+
+function stopCaptionSync() {
+  if (captionTimer) {
+    clearTimeout(captionTimer);
+    captionTimer = null;
+  }
+}
+
+function wordDelayMs(token, rate) {
+  const letters = (token.text.match(/[A-Za-z0-9]/g) || []).length;
+  const base = 340 / Math.max(0.5, rate);
+  return Math.max(240, Math.min(920, base * (0.55 + letters / 4.5)));
+}
+
+function scheduleCaptionAdvance() {
+  stopCaptionSync();
+  if (!charState.speaking) return;
+  if (captionIndex >= captionTokens.length - 1) return;
+  const delay = wordDelayMs(captionTokens[captionIndex], captionRate);
+  captionTimer = setTimeout(() => {
+    captionIndex = Math.min(captionIndex + 1, captionTokens.length - 1);
+    setLiveWords(captionTokens, captionIndex);
+    charState.energy = 1;
+    charState.sawBoundary = true;
+    scheduleCaptionAdvance();
+  }, delay);
+}
+
+function beginSpeakingVisuals(tokens, rate = 0.85) {
+  stopCaptionSync();
+  sceneT0 = performance.now();
   charState.speaking = true;
   charState.energy = 0;
   charState.sawBoundary = false;
   charState.lastT = null;
-  setLiveWords(words, 0);
+  captionTokens = tokens;
+  captionRate = rate;
+  captionIndex = 0;
+  setLiveWords(tokens, 0);
+  captionTimer = setTimeout(scheduleCaptionAdvance, 160);
 }
 
 function endSpeakingVisuals() {
+  stopCaptionSync();
   charState.speaking = false;
 }
 
 function clearLiveWords() {
+  stopCaptionSync();
   live.prev = ''; live.cur = ''; live.next = '';
 }
 
-function handleWordBoundary(words, e) {
-  if (e.charIndex === undefined) return;
+function wordIndexFromChar(tokens, charIndex) {
+  if (!tokens.length) return 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (charIndex < tokens[i].end) return i;
+  }
+  return tokens.length - 1;
+}
+
+function handleWordBoundary(tokens, e) {
+  if (e.charIndex === undefined || e.charIndex === null) return;
   if (e.name && e.name !== 'word') return;
-  const spoken = translatedText.substring(0, e.charIndex);
-  const count = spoken.split(/\s+/).filter(w => w.trim() !== '').length;
-  setLiveWords(words, count);
+  const idx = wordIndexFromChar(tokens, e.charIndex);
+  captionIndex = idx;
+  setLiveWords(tokens, idx);
   charState.energy = 1;
   charState.sawBoundary = true;
+  scheduleCaptionAdvance();
 }
 
 // ---------- 2. Preview (same picture as the recording) ----------
@@ -651,17 +709,18 @@ function startPreview() {
   isPreviewPlaying = true;
   statusDiv.innerHTML = '<p style="color:lightgreen">🔊 پریویو چل رہا ہے...</p>';
 
+  const rate = 0.85;
   const utter = new SpeechSynthesisUtterance(translatedText);
-  utter.lang = 'en-US'; utter.rate = 0.85;
+  utter.lang = 'en-US'; utter.rate = rate;
   pickEnglishVoice(utter);
   currentPreviewUtter = utter;
 
-  const words = translatedText.split(/\s+/);
-  beginSpeakingVisuals(words);
+  const tokens = tokenizeWords(translatedText);
+  beginSpeakingVisuals(tokens, rate);
 
-  utter.onboundary = (e) => handleWordBoundary(words, e);
+  utter.onboundary = (e) => handleWordBoundary(tokens, e);
   const finish = () => {
-    if (utter !== currentPreviewUtter) return; // an older preview ending late must not stop a newer one
+    if (utter !== currentPreviewUtter) return;
     currentPreviewUtter = null;
     isPreviewPlaying = false;
     endSpeakingVisuals();
@@ -733,15 +792,16 @@ recordBtn.addEventListener('click', async () => {
     };
 
     const utter = new SpeechSynthesisUtterance(translatedText);
-    utter.lang = 'en-US'; utter.rate = 0.85;
+    const rate = 0.85;
+    utter.lang = 'en-US'; utter.rate = rate;
     pickEnglishVoice(utter);
-    const words = translatedText.split(/\s+/);
+    const tokens = tokenizeWords(translatedText);
 
     recorder.start();
     statusDiv.innerHTML = '<p style="color:lightgreen">🔴 ریکارڈنگ ہو رہی ہے...</p>';
-    beginSpeakingVisuals(words);
+    beginSpeakingVisuals(tokens, rate);
 
-    utter.onboundary = (e) => handleWordBoundary(words, e);
+    utter.onboundary = (e) => handleWordBoundary(tokens, e);
     utter.onend = () => {
       endSpeakingVisuals();
       // short pause so the last frames (mouth closing) are captured too
