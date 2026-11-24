@@ -90,9 +90,8 @@ button:hover:not(:disabled) { transform:scale(1.05); background:linear-gradient(
   <a id="downloadLink">⬇️ ویڈیو ڈاؤن لوڈ کریں</a>
 
   <p class="note">
-    "ریکارڈ کریں" دبانے پر ایک ہی بار پرمیشن باکس آئے گا (صرف آواز ریکارڈ کرنے کی اجازت کیلئے — یہ براؤزر کی سیکیورٹی
-    پابندی ہے، اس کے بغیر کوئی بھی ویب سائٹ آپ کی آواز ریکارڈ نہیں کر سکتی)۔ اس باکس میں <b>"This Tab"</b> اور
-    <b>"Share tab audio"</b> ضرور منتخب کریں۔ ویڈیو میں صرف اوپر والا باکس (کردار + کیپشن) نظر آئے گا، پوری اسکرین نہیں۔
+    "ریکارڈ کریں" دبائیں — اب screen share کی ضرورت نہیں۔ آواز خود تیار ہو کر ویڈیو میں شامل ہو جاتی ہے،
+    پھر نیچے <b>ڈاؤن لوڈ</b> لنک آ جاتا ہے۔ ویڈیو میں صرف اوپر والا باکس (کردار + کیپشن) ریکارڈ ہوتا ہے۔
   </p>
 </div>
 
@@ -650,7 +649,8 @@ function scheduleCaptionAdvance() {
   }, delay);
 }
 
-function beginSpeakingVisuals(tokens, rate = 0.85) {
+function beginSpeakingVisuals(tokens, rate = 0.85, options = {}) {
+  const timed = options.timed !== false;
   stopCaptionSync();
   sceneT0 = performance.now();
   charState.speaking = true;
@@ -661,7 +661,28 @@ function beginSpeakingVisuals(tokens, rate = 0.85) {
   captionRate = rate;
   captionIndex = 0;
   setLiveWords(tokens, 0);
-  captionTimer = setTimeout(scheduleCaptionAdvance, 160);
+  if (timed) captionTimer = setTimeout(scheduleCaptionAdvance, 160);
+}
+
+function syncCaptionsFromAudio(tokens, audio) {
+  if (!tokens.length || !audio.duration || !isFinite(audio.duration) || audio.duration <= 0) return;
+  const progress = Math.min(1, Math.max(0, audio.currentTime / audio.duration));
+  const weights = tokens.map((t) => Math.max(1, t.text.replace(/[^A-Za-z0-9']/g, '').length || t.text.length));
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
+  let target = progress * total;
+  let acc = 0;
+  let idx = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    acc += weights[i];
+    idx = i;
+    if (acc >= target) break;
+  }
+  if (idx !== captionIndex) {
+    captionIndex = idx;
+    setLiveWords(tokens, idx);
+    charState.energy = 1;
+    charState.sawBoundary = true;
+  }
 }
 
 function endSpeakingVisuals() {
@@ -733,13 +754,48 @@ function startPreview() {
   speechSynthesis.speak(utter);
 }
 
-// ---------- 3. Record the canvas (character + captions) with the real browser voice ----------
+// ---------- 3. Record canvas video (+ TTS audio when possible, no screen-share) ----------
+function pickRecorderMime() {
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4'
+  ];
+  return candidates.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+}
+
+function ttsUrl(part) {
+  return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encodeURIComponent(part)}`;
+}
+
+function waitMediaEvent(el, eventName) {
+  return new Promise((resolve, reject) => {
+    const onOk = () => { cleanup(); resolve(); };
+    const onErr = () => { cleanup(); reject(new Error('Audio could not be loaded')); };
+    const cleanup = () => {
+      el.removeEventListener(eventName, onOk);
+      el.removeEventListener('error', onErr);
+    };
+    el.addEventListener(eventName, onOk, { once: true });
+    el.addEventListener('error', onErr, { once: true });
+  });
+}
+
+function captureAudioElementStream(audioEl) {
+  if (typeof audioEl.captureStream === 'function') return audioEl.captureStream();
+  if (typeof audioEl.mozCaptureStream === 'function') return audioEl.mozCaptureStream();
+  return null;
+}
+
 recordBtn.addEventListener('click', async () => {
   if (!translatedText) {
     statusDiv.innerHTML = '<p style="color:#ff8080">⚠ پہلے ترجمہ کریں</p>';
     return;
   }
-  // stop any running preview first
+
   currentPreviewUtter = null;
   isPreviewPlaying = false;
   endSpeakingVisuals();
@@ -747,73 +803,96 @@ recordBtn.addEventListener('click', async () => {
   recordBtn.disabled = true; playBtn.disabled = true; translateBtn.disabled = true;
   downloadLink.style.display = 'none';
 
-  let displayStream;
+  let audioEl = null;
+  let videoStream = null;
+  let audioTracksToStop = [];
+  let usedTtsAudio = false;
+
   try {
-    statusDiv.innerHTML = '<p style="color:#ffd966">🔐 اجازت کا باکس کھلے گا — "This Tab" اور "Share tab audio" منتخب کریں</p>';
+    const tokens = tokenizeWords(translatedText);
+    const parts = splitForApi(translatedText, 160);
+    videoStream = canvas.captureStream(30);
+    const tracks = [...videoStream.getVideoTracks()];
 
-    // Get permission ONLY to capture this tab's audio (video part is discarded immediately)
-    displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    displayStream.getVideoTracks().forEach(t => t.stop()); // we don't need their video, only audio
-
-    const audioTracks = displayStream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      throw new Error('آڈیو شیئر نہیں کی گئی — دوبارہ کوشش کریں اور "Share tab audio" کا بکس ضرور آن کریں');
+    if (parts.length === 1) {
+      statusDiv.innerHTML = '<p style="color:#ffd966">⏳ آواز تیار ہو رہی ہے...</p>';
+      audioEl = new Audio(ttsUrl(parts[0]));
+      audioEl.preload = 'auto';
+      try {
+        await waitMediaEvent(audioEl, 'canplaythrough');
+        const audioStream = captureAudioElementStream(audioEl);
+        if (audioStream && audioStream.getAudioTracks().length) {
+          audioTracksToStop = audioStream.getAudioTracks();
+          tracks.push(...audioTracksToStop);
+          usedTtsAudio = true;
+        }
+      } catch (ttsErr) {
+        console.warn('TTS audio unavailable, falling back to live speech only', ttsErr);
+        audioEl = null;
+      }
     }
 
-    const videoStream = canvas.captureStream(30);
-    const combinedStream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
-
-    // Ask the browser to record MP4 directly; fall back to WEBM only if MP4 is not supported
-    const candidates = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1,mp4a.40.2',
-      'video/mp4;codecs=avc1',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm'
-    ];
-    const chosenType = candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    const combinedStream = new MediaStream(tracks);
+    const chosenType = pickRecorderMime();
     const isMp4 = chosenType.startsWith('video/mp4');
-    recorder = chosenType ? new MediaRecorder(combinedStream, { mimeType: chosenType }) : new MediaRecorder(combinedStream);
+    if (!window.MediaRecorder) throw new Error('MediaRecorder is not supported in this browser');
+    recorder = chosenType
+      ? new MediaRecorder(combinedStream, { mimeType: chosenType })
+      : new MediaRecorder(combinedStream);
     chunks = [];
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const stopSoon = () => {
+      endSpeakingVisuals();
+      setTimeout(() => {
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      }, 450);
+    };
 
     recorder.onstop = () => {
-      displayStream.getTracks().forEach(t => t.stop());
+      audioTracksToStop.forEach((t) => t.stop());
+      if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(chunks, { type: recorder.mimeType || chosenType || 'video/webm' });
+      if (!blob.size) {
+        statusDiv.innerHTML = '<p style="color:#ff8080">❌ ویڈیو خالی بن گئی — دوبارہ کوشش کریں</p>';
+        recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
+        return;
+      }
       downloadLink.href = URL.createObjectURL(blob);
       downloadLink.download = isMp4 ? 'caption_video.mp4' : 'caption_video.webm';
-      downloadLink.textContent = isMp4 ? '⬇️ MP4 ویڈیو ڈاؤن لوڈ کریں' : '⬇️ ویڈیو ڈاؤن لوڈ کریں (WEBM — اس براؤزر میں MP4 ریکارڈنگ دستیاب نہیں)';
+      downloadLink.textContent = isMp4
+        ? '⬇️ MP4 ویڈیو ڈاؤن لوڈ کریں'
+        : '⬇️ ویڈیو ڈاؤن لوڈ کریں (WEBM)';
       downloadLink.style.display = 'inline-block';
-      statusDiv.innerHTML = '<p style="color:lightgreen">✅ ویڈیو تیار ہے</p>';
+      statusDiv.innerHTML = usedTtsAudio
+        ? '<p style="color:lightgreen">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p>'
+        : '<p style="color:lightgreen">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p><p style="color:#ffe9a8;font-size:12px">نوٹ: اس ریکارڈنگ میں فائل کے اندر آواز شامل نہیں ہوئی، لیکن کیپشن ویڈیو موجود ہے</p>';
       recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
       clearLiveWords();
     };
 
-    const utter = new SpeechSynthesisUtterance(translatedText);
-    const rate = 0.85;
-    utter.lang = 'en-US'; utter.rate = rate;
-    pickEnglishVoice(utter);
-    const tokens = tokenizeWords(translatedText);
-
-    recorder.start();
+    recorder.start(200);
     statusDiv.innerHTML = '<p style="color:lightgreen">🔴 ریکارڈنگ ہو رہی ہے...</p>';
-    beginSpeakingVisuals(tokens, rate);
 
-    utter.onboundary = (e) => handleWordBoundary(tokens, e);
-    utter.onend = () => {
-      endSpeakingVisuals();
-      // short pause so the last frames (mouth closing) are captured too
-      setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop(); }, 600);
-    };
-    utter.onerror = () => {
-      endSpeakingVisuals();
-      if (recorder.state !== 'inactive') recorder.stop();
-    };
-
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utter);
+    if (usedTtsAudio && audioEl) {
+      beginSpeakingVisuals(tokens, 1, { timed: false });
+      audioEl.ontimeupdate = () => syncCaptionsFromAudio(tokens, audioEl);
+      audioEl.onended = stopSoon;
+      audioEl.onerror = stopSoon;
+      await audioEl.play();
+    } else {
+      const rate = 0.85;
+      beginSpeakingVisuals(tokens, rate, { timed: true });
+      const utter = new SpeechSynthesisUtterance(translatedText);
+      utter.lang = 'en-US';
+      utter.rate = rate;
+      pickEnglishVoice(utter);
+      utter.onboundary = (e) => handleWordBoundary(tokens, e);
+      utter.onend = stopSoon;
+      utter.onerror = stopSoon;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utter);
+    }
 
   } catch (err) {
     console.error(err);
@@ -821,7 +900,12 @@ recordBtn.addEventListener('click', async () => {
     statusDiv.innerHTML = '<p style="color:#ff8080">❌ ریکارڈنگ نہیں ہو سکی</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
     recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
     endSpeakingVisuals();
-    if (displayStream) displayStream.getTracks().forEach(t => t.stop());
+    speechSynthesis.cancel();
+    audioTracksToStop.forEach((t) => t.stop());
+    if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
+    if (audioEl) {
+      try { audioEl.pause(); } catch {}
+    }
   }
 });
 </script>
