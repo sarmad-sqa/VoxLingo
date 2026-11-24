@@ -635,10 +635,23 @@ function wordDelayMs(token, rate) {
   return Math.max(240, Math.min(920, base * (0.55 + letters / 4.5)));
 }
 
+let onCaptionsComplete = null;
+
+function estimateCaptionDurationMs(tokens, rate) {
+  if (!tokens.length) return 2000;
+  return tokens.reduce((sum, token) => sum + wordDelayMs(token, rate), 0) + 600;
+}
+
 function scheduleCaptionAdvance() {
   stopCaptionSync();
   if (!charState.speaking) return;
-  if (captionIndex >= captionTokens.length - 1) return;
+  if (captionIndex >= captionTokens.length - 1) {
+    const hold = wordDelayMs(captionTokens[captionIndex] || { text: 'end' }, captionRate);
+    captionTimer = setTimeout(() => {
+      if (typeof onCaptionsComplete === 'function') onCaptionsComplete();
+    }, hold);
+    return;
+  }
   const delay = wordDelayMs(captionTokens[captionIndex], captionRate);
   captionTimer = setTimeout(() => {
     captionIndex = Math.min(captionIndex + 1, captionTokens.length - 1);
@@ -651,6 +664,7 @@ function scheduleCaptionAdvance() {
 
 function beginSpeakingVisuals(tokens, rate = 0.85, options = {}) {
   const timed = options.timed !== false;
+  onCaptionsComplete = null;
   stopCaptionSync();
   sceneT0 = performance.now();
   charState.speaking = true;
@@ -842,14 +856,31 @@ recordBtn.addEventListener('click', async () => {
     chunks = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
+    let stopArmed = false;
+    let hardStopTimer = null;
     const stopSoon = () => {
+      if (stopArmed) return;
+      stopArmed = true;
+      onCaptionsComplete = null;
+      if (hardStopTimer) {
+        clearTimeout(hardStopTimer);
+        hardStopTimer = null;
+      }
+      try { speechSynthesis.cancel(); } catch {}
+      if (audioEl) {
+        try { audioEl.pause(); } catch {}
+      }
       endSpeakingVisuals();
       setTimeout(() => {
         if (recorder && recorder.state !== 'inactive') recorder.stop();
-      }, 450);
+      }, 350);
     };
 
     recorder.onstop = () => {
+      if (hardStopTimer) {
+        clearTimeout(hardStopTimer);
+        hardStopTimer = null;
+      }
       audioTracksToStop.forEach((t) => t.stop());
       if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(chunks, { type: recorder.mimeType || chosenType || 'video/webm' });
@@ -871,19 +902,28 @@ recordBtn.addEventListener('click', async () => {
       clearLiveWords();
     };
 
+    const rate = 0.85;
+    // Always drive captions on a timer so recording can finish even if speech onend never fires.
+    beginSpeakingVisuals(tokens, rate, { timed: true });
+    onCaptionsComplete = stopSoon;
+    const maxMs = Math.max(3000, estimateCaptionDurationMs(tokens, rate) + 1500);
+    hardStopTimer = setTimeout(stopSoon, maxMs);
+
     recorder.start(200);
     statusDiv.innerHTML = '<p style="color:lightgreen">🔴 ریکارڈنگ ہو رہی ہے...</p>';
 
     if (usedTtsAudio && audioEl) {
-      beginSpeakingVisuals(tokens, 1, { timed: false });
       audioEl.ontimeupdate = () => syncCaptionsFromAudio(tokens, audioEl);
       audioEl.onended = stopSoon;
       audioEl.onerror = stopSoon;
+      if (audioEl.duration && isFinite(audioEl.duration)) {
+        clearTimeout(hardStopTimer);
+        hardStopTimer = setTimeout(stopSoon, Math.ceil(audioEl.duration * 1000) + 1200);
+      }
       await audioEl.play();
     } else {
-      const rate = 0.85;
-      beginSpeakingVisuals(tokens, rate, { timed: true });
       const utter = new SpeechSynthesisUtterance(translatedText);
+      window.__voxRecordingUtter = utter;
       utter.lang = 'en-US';
       utter.rate = rate;
       pickEnglishVoice(utter);
@@ -891,7 +931,7 @@ recordBtn.addEventListener('click', async () => {
       utter.onend = stopSoon;
       utter.onerror = stopSoon;
       speechSynthesis.cancel();
-      speechSynthesis.speak(utter);
+      setTimeout(() => speechSynthesis.speak(utter), 60);
     }
 
   } catch (err) {
