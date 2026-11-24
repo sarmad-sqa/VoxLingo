@@ -305,14 +305,16 @@
     margin-top: 0.9rem;
     min-height: 3.1rem;
     border-radius: 0.9rem;
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-strong);
     background: #fff;
     padding: 0.8rem 0.95rem;
-    color: var(--ink-soft);
-    font-size: 0.9rem;
-    line-height: 1.5;
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.55;
   }
-  #status p { margin: 0.12rem 0; }
+  #status p { margin: 0.2rem 0; font-weight: 600; }
+  #status p + p { font-weight: 500; opacity: 0.95; }
 
   #downloadLink {
     display: none;
@@ -536,11 +538,11 @@ function splitForApi(text, maxLen = 400) {
 async function translateInput() {
   const urduInput = document.getElementById('urduInput').value.trim();
   if (!urduInput) {
-    statusDiv.innerHTML = '<p style="color:#ff8080">⚠ پہلے اردو ٹیکسٹ لکھیں</p>';
+    statusDiv.innerHTML = '<p style="color:#b42318">⚠ پہلے اردو ٹیکسٹ لکھیں</p>';
     return;
   }
   translateBtn.disabled = true; playBtn.disabled = true; recordBtn.disabled = true;
-  statusDiv.innerHTML = '<p style="color:#ffd966">⏳ ترجمہ ہو رہا ہے...</p>';
+  statusDiv.innerHTML = '<p style="color:#a16207">⏳ ترجمہ ہو رہا ہے...</p>';
   translatedBox.style.display = 'none';
 
   try {
@@ -558,7 +560,7 @@ async function translateInput() {
 
     translatedBox.style.display = 'block';
     translatedBox.textContent = translatedText;
-    statusDiv.innerHTML = '<p style="color:lightgreen">✅ ترجمہ مکمل</p>';
+    statusDiv.innerHTML = '<p style="color:#0f766e">✅ ترجمہ مکمل</p>';
     playBtn.disabled = false;
     recordBtn.disabled = false;
   } catch (err) {
@@ -566,8 +568,8 @@ async function translateInput() {
     const detail = (err && err.message) ? err.message : String(err);
     const rateLimited = /429|rate limit/i.test(detail);
     statusDiv.innerHTML = rateLimited
-      ? '<p style="color:#ff8080">❌ ترجمہ سروس عارضی طور پر مصروف ہے (rate limit)</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">Please wait ~1 minute and try again. ' + detail + '</p>'
-      : '<p style="color:#ff8080">❌ ترجمہ نہیں ہو سکا</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+      ? '<p style="color:#b42318">❌ ترجمہ سروس عارضی طور پر مصروف ہے (rate limit)</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">Please wait ~1 minute and try again. ' + detail + '</p>'
+      : '<p style="color:#b42318">❌ ترجمہ نہیں ہو سکا</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
   } finally {
     translateBtn.disabled = false;
   }
@@ -1076,7 +1078,7 @@ function startPreview() {
     return;
   }
   isPreviewPlaying = true;
-  statusDiv.innerHTML = '<p style="color:lightgreen">🔊 پریویو چل رہا ہے...</p>';
+  statusDiv.innerHTML = '<p style="color:#0f766e">🔊 پریویو چل رہا ہے...</p>';
 
   const rate = 0.85;
   const utter = new SpeechSynthesisUtterance(translatedText);
@@ -1094,7 +1096,7 @@ function startPreview() {
     isPreviewPlaying = false;
     endSpeakingVisuals();
     clearLiveWords();
-    statusDiv.innerHTML = '<p style="color:lightgreen">✅ پریویو مکمل</p>';
+    statusDiv.innerHTML = '<p style="color:#0f766e">✅ پریویو مکمل</p>';
   };
   utter.onend = finish;
   utter.onerror = finish;
@@ -1140,7 +1142,7 @@ function captureAudioElementStream(audioEl) {
 
 recordBtn.addEventListener('click', async () => {
   if (!translatedText) {
-    statusDiv.innerHTML = '<p style="color:#ff8080">⚠ پہلے ترجمہ کریں</p>';
+    statusDiv.innerHTML = '<p style="color:#b42318">⚠ پہلے ترجمہ کریں</p>';
     return;
   }
 
@@ -1163,7 +1165,7 @@ recordBtn.addEventListener('click', async () => {
     const tracks = [...videoStream.getVideoTracks()];
 
     if (parts.length === 1) {
-      statusDiv.innerHTML = '<p style="color:#ffd966">⏳ آواز تیار ہو رہی ہے...</p>';
+      statusDiv.innerHTML = '<p style="color:#a16207">⏳ آواز تیار ہو رہی ہے...</p>';
       audioEl = new Audio(ttsUrl(parts[0]));
       audioEl.preload = 'auto';
       try {
@@ -1219,7 +1221,7 @@ recordBtn.addEventListener('click', async () => {
       if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(chunks, { type: recorder.mimeType || chosenType || 'video/webm' });
       if (!blob.size) {
-        statusDiv.innerHTML = '<p style="color:#ff8080">❌ ویڈیو خالی بن گئی — دوبارہ کوشش کریں</p>';
+        statusDiv.innerHTML = '<p style="color:#b42318">❌ ویڈیو خالی بن گئی — دوبارہ کوشش کریں</p>';
         recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
         return;
       }
@@ -1230,8 +1232,8 @@ recordBtn.addEventListener('click', async () => {
         : '⬇️ ویڈیو ڈاؤن لوڈ کریں (WEBM)';
       downloadLink.style.display = 'inline-block';
       statusDiv.innerHTML = usedTtsAudio
-        ? '<p style="color:lightgreen">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p>'
-        : '<p style="color:lightgreen">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p><p style="color:#ffe9a8;font-size:12px">نوٹ: اس ریکارڈنگ میں فائل کے اندر آواز شامل نہیں ہوئی، لیکن کیپشن ویڈیو موجود ہے</p>';
+        ? '<p style="color:#0f766e">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p>'
+        : '<p style="color:#0f766e">✅ ویڈیو تیار ہے — نیچے سے ڈاؤن لوڈ کریں</p><p style="color:#3f3f46;font-size:12px">نوٹ: اس ریکارڈنگ میں فائل کے اندر آواز شامل نہیں ہوئی، لیکن کیپشن ویڈیو موجود ہے</p>';
       recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
       clearLiveWords();
     };
@@ -1244,7 +1246,7 @@ recordBtn.addEventListener('click', async () => {
     hardStopTimer = setTimeout(stopSoon, maxMs);
 
     recorder.start(200);
-    statusDiv.innerHTML = '<p style="color:lightgreen">🔴 ریکارڈنگ ہو رہی ہے...</p>';
+    statusDiv.innerHTML = '<p style="color:#0f766e">🔴 ریکارڈنگ ہو رہی ہے...</p>';
 
     if (usedTtsAudio && audioEl) {
       audioEl.ontimeupdate = () => syncCaptionsFromAudio(tokens, audioEl);
@@ -1271,7 +1273,7 @@ recordBtn.addEventListener('click', async () => {
   } catch (err) {
     console.error(err);
     const detail = (err && err.message) ? err.message : String(err);
-    statusDiv.innerHTML = '<p style="color:#ff8080">❌ ریکارڈنگ نہیں ہو سکی</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+    statusDiv.innerHTML = '<p style="color:#b42318">❌ ریکارڈنگ نہیں ہو سکی</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
     recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
     endSpeakingVisuals();
     speechSynthesis.cancel();
