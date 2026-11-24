@@ -13,7 +13,7 @@ VoxLingo is a browser-based caption studio. Paste Urdu text, translate to Englis
 - Urdu → English translation (Google Translate, with MyMemory fallback)
 - Timed karaoke captions on a live canvas stage
 - Speech preview
-- Record & download without screen-share permission
+- Record & download with embedded voice audio (no screen-share)
 - Runs entirely in the browser — no account
 
 ## How to use
@@ -28,6 +28,10 @@ VoxLingo is a browser-based caption studio. Paste Urdu text, translate to Englis
 ## UI
 
 The interface is a dark caption-studio layout: Fraunces for the brand, Manrope for UI, and Noto Nastaliq Urdu for input. The preview stage sits first; translate and export follow in clear steps.
+
+## Audio in downloads
+
+Recording fetches speech through a same-origin `/api/tts` proxy, then mixes that audio into the video with the Web Audio API. That avoids the silent-capture issue browsers apply to cross-origin TTS.
 
 ## Translation & troubleshooting
 

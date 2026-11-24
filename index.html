@@ -1117,8 +1117,8 @@ function pickRecorderMime() {
   return candidates.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
 }
 
-function ttsUrl(part) {
-  return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encodeURIComponent(part)}`;
+function ttsProxyUrl(part) {
+  return `/api/tts?tl=en&q=${encodeURIComponent(part)}`;
 }
 
 function waitMediaEvent(el, eventName) {
@@ -1134,10 +1134,44 @@ function waitMediaEvent(el, eventName) {
   });
 }
 
-function captureAudioElementStream(audioEl) {
-  if (typeof audioEl.captureStream === 'function') return audioEl.captureStream();
-  if (typeof audioEl.mozCaptureStream === 'function') return audioEl.mozCaptureStream();
-  return null;
+async function fetchTtsBlob(text) {
+  const parts = splitForApi(text, 160);
+  const blobs = [];
+  for (const part of parts) {
+    const res = await fetch(ttsProxyUrl(part));
+    if (!res.ok) {
+      let detail = 'status ' + res.status;
+      try {
+        const data = await res.json();
+        if (data && data.error) detail = data.error;
+      } catch {}
+      throw new Error('Voice audio download failed (' + detail + ')');
+    }
+    blobs.push(await res.blob());
+  }
+  return new Blob(blobs, { type: 'audio/mpeg' });
+}
+
+async function prepareRecordedVoice(text) {
+  const blob = await fetchTtsBlob(text);
+  const objectUrl = URL.createObjectURL(blob);
+  const audioEl = new Audio(objectUrl);
+  audioEl.preload = 'auto';
+  audioEl.crossOrigin = 'anonymous';
+  await waitMediaEvent(audioEl, 'canplaythrough');
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) throw new Error('Web Audio API not supported');
+  const audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  // Same-origin blob → MediaElementSource works and gives a real audio track for MediaRecorder.
+  const source = audioCtx.createMediaElementSource(audioEl);
+  const dest = audioCtx.createMediaStreamDestination();
+  source.connect(dest);
+  source.connect(audioCtx.destination); // user still hears playback while recording
+
+  return { audioEl, objectUrl, audioStream: dest.stream, audioCtx };
 }
 
 recordBtn.addEventListener('click', async () => {
@@ -1158,28 +1192,29 @@ recordBtn.addEventListener('click', async () => {
   let audioTracksToStop = [];
   let usedTtsAudio = false;
 
+  let objectUrl = null;
+  let audioCtx = null;
+
   try {
     const tokens = tokenizeWords(translatedText);
-    const parts = splitForApi(translatedText, 160);
     videoStream = canvas.captureStream(30);
     const tracks = [...videoStream.getVideoTracks()];
 
-    if (parts.length === 1) {
-      statusDiv.innerHTML = '<p style="color:#a16207">⏳ آواز تیار ہو رہی ہے...</p>';
-      audioEl = new Audio(ttsUrl(parts[0]));
-      audioEl.preload = 'auto';
-      try {
-        await waitMediaEvent(audioEl, 'canplaythrough');
-        const audioStream = captureAudioElementStream(audioEl);
-        if (audioStream && audioStream.getAudioTracks().length) {
-          audioTracksToStop = audioStream.getAudioTracks();
-          tracks.push(...audioTracksToStop);
-          usedTtsAudio = true;
-        }
-      } catch (ttsErr) {
-        console.warn('TTS audio unavailable, falling back to live speech only', ttsErr);
-        audioEl = null;
-      }
+    statusDiv.innerHTML = '<p style="color:#a16207">⏳ آواز تیار ہو رہی ہے...</p>';
+    try {
+      const prepared = await prepareRecordedVoice(translatedText);
+      audioEl = prepared.audioEl;
+      objectUrl = prepared.objectUrl;
+      audioCtx = prepared.audioCtx;
+      const audioTracks = prepared.audioStream.getAudioTracks();
+      if (!audioTracks.length) throw new Error('No audio track from TTS');
+      audioTracksToStop = audioTracks;
+      tracks.push(...audioTracks);
+      usedTtsAudio = true;
+    } catch (ttsErr) {
+      console.warn('TTS audio unavailable, falling back to live speech only', ttsErr);
+      audioEl = null;
+      usedTtsAudio = false;
     }
 
     const combinedStream = new MediaStream(tracks);
@@ -1219,6 +1254,10 @@ recordBtn.addEventListener('click', async () => {
       }
       audioTracksToStop.forEach((t) => t.stop());
       if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (audioCtx) {
+        try { audioCtx.close(); } catch {}
+      }
       const blob = new Blob(chunks, { type: recorder.mimeType || chosenType || 'video/webm' });
       if (!blob.size) {
         statusDiv.innerHTML = '<p style="color:#b42318">❌ ویڈیو خالی بن گئی — دوبارہ کوشش کریں</p>';
@@ -1239,25 +1278,24 @@ recordBtn.addEventListener('click', async () => {
     };
 
     const rate = 0.85;
-    // Always drive captions on a timer so recording can finish even if speech onend never fires.
-    beginSpeakingVisuals(tokens, rate, { timed: true });
-    onCaptionsComplete = stopSoon;
-    const maxMs = Math.max(3000, estimateCaptionDurationMs(tokens, rate) + 1500);
-    hardStopTimer = setTimeout(stopSoon, maxMs);
-
     recorder.start(200);
     statusDiv.innerHTML = '<p style="color:#0f766e">🔴 ریکارڈنگ ہو رہی ہے...</p>';
 
     if (usedTtsAudio && audioEl) {
+      beginSpeakingVisuals(tokens, 1, { timed: false });
+      onCaptionsComplete = null;
       audioEl.ontimeupdate = () => syncCaptionsFromAudio(tokens, audioEl);
       audioEl.onended = stopSoon;
       audioEl.onerror = stopSoon;
-      if (audioEl.duration && isFinite(audioEl.duration)) {
-        clearTimeout(hardStopTimer);
-        hardStopTimer = setTimeout(stopSoon, Math.ceil(audioEl.duration * 1000) + 1200);
-      }
+      const durationMs = (audioEl.duration && isFinite(audioEl.duration))
+        ? Math.ceil(audioEl.duration * 1000) + 1200
+        : Math.max(3000, estimateCaptionDurationMs(tokens, rate) + 2000);
+      hardStopTimer = setTimeout(stopSoon, durationMs);
       await audioEl.play();
     } else {
+      beginSpeakingVisuals(tokens, rate, { timed: true });
+      onCaptionsComplete = stopSoon;
+      hardStopTimer = setTimeout(stopSoon, Math.max(3000, estimateCaptionDurationMs(tokens, rate) + 1500));
       const utter = new SpeechSynthesisUtterance(translatedText);
       window.__voxRecordingUtter = utter;
       utter.lang = 'en-US';
@@ -1281,6 +1319,10 @@ recordBtn.addEventListener('click', async () => {
     if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
     if (audioEl) {
       try { audioEl.pause(); } catch {}
+    }
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    if (audioCtx) {
+      try { audioCtx.close(); } catch {}
     }
   }
 });
