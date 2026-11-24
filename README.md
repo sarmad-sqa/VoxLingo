@@ -35,6 +35,10 @@ The project is currently maintained as a web application with its implementation
 
 For exact framework, library, and API details, refer to the source code.
 
+## 🔤 Translation & Troubleshooting
+
+Translation tries **Google Translate** first, then falls back to **MyMemory** (with an email quota parameter). Results are cached in `sessionStorage` for the browser session, and 429 rate-limit responses are retried with short backoff. If both providers are rate-limited, wait about a minute and try again.
+
 ## 🔗 Project Links
 
 - **Live Website:** https://vox-lingo.vercel.app/

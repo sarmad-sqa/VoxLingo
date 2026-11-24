@@ -110,28 +110,82 @@ let translatedText = "";
 let isPreviewPlaying = false;
 let recorder, chunks = [];
 
-// ---------- 1. Real Urdu -> English translation (free MyMemory API) ----------
-async function translateChunk(chunk) {
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=ur|en`;
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (netErr) {
-    throw new Error('Translation server tak pahunch nahi sake (internet ya block): ' + netErr.message);
+// ---------- 1. Urdu -> English translation (multi-provider + cache + retry) ----------
+const TRANSLATE_CACHE_KEY = 'voxlingo-translate-cache-v1';
+const MYMEMORY_EMAIL = 'sarmadsarwar22@gmail.com';
+
+function loadTranslateCache() {
+  try { return JSON.parse(sessionStorage.getItem(TRANSLATE_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveTranslateCache(cache) {
+  try { sessionStorage.setItem(TRANSLATE_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function translateViaGoogle(chunk) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ur&tl=en&dt=t&q=${encodeURIComponent(chunk)}`;
+  const res = await fetch(url);
+  if (res.status === 429) {
+    const err = new Error('Google Translate rate limit (429)');
+    err.status = 429;
+    throw err;
   }
-  if (!res.ok) throw new Error('Translation server error, status: ' + res.status);
+  if (!res.ok) throw new Error('Google Translate error, status: ' + res.status);
   const data = await res.json();
-  const text = data?.responseData?.translatedText || '';
-  const status = Number(data?.responseStatus);
-  // This API can answer HTTP 200 but put a warning/limit message in the text field, so check for it
-  if ((!Number.isNaN(status) && status !== 200) || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(text)) {
-    throw new Error('Translation service message: ' + (data?.responseDetails || text || ('status ' + data?.responseStatus)));
-  }
+  const text = (data?.[0] || []).map((row) => row?.[0] || '').join('').trim();
+  if (!text) throw new Error('Google Translate returned empty text');
   return text;
 }
 
-// Free API accepts only short requests, so cut long Urdu text into small pieces
-function splitForApi(text, maxLen = 180) {
+async function translateViaMyMemory(chunk) {
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=ur|en&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
+  const res = await fetch(url);
+  if (res.status === 429) {
+    const err = new Error('MyMemory rate limit (429)');
+    err.status = 429;
+    throw err;
+  }
+  if (!res.ok) throw new Error('MyMemory error, status: ' + res.status);
+  const data = await res.json();
+  const text = data?.responseData?.translatedText || '';
+  const status = Number(data?.responseStatus);
+  if ((!Number.isNaN(status) && status !== 200) || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(text)) {
+    throw new Error('MyMemory message: ' + (data?.responseDetails || text || ('status ' + data?.responseStatus)));
+  }
+  if (!text.trim()) throw new Error('MyMemory returned empty text');
+  return text.trim();
+}
+
+async function translateChunk(chunk) {
+  const cache = loadTranslateCache();
+  if (cache[chunk]) return cache[chunk];
+
+  const providers = [
+    { name: 'Google', run: translateViaGoogle },
+    { name: 'MyMemory', run: translateViaMyMemory },
+  ];
+  const errors = [];
+
+  for (const provider of providers) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const text = await provider.run(chunk);
+        cache[chunk] = text;
+        saveTranslateCache(cache);
+        return text;
+      } catch (err) {
+        errors.push(provider.name + ': ' + (err.message || err));
+        if (err.status === 429) await sleep(700 * (attempt + 1));
+        else break;
+      }
+    }
+  }
+
+  throw new Error(errors.join(' | ') || 'Translation failed');
+}
+
+function splitForApi(text, maxLen = 400) {
   const sentences = text.match(/[^۔!؟.?!]+[۔!؟.?!]?/g)?.map(s => s.trim()).filter(Boolean) || [text];
   const out = [];
   for (const s of sentences) {
@@ -157,11 +211,17 @@ async function translateInput() {
   translatedBox.style.display = 'none';
 
   try {
-    // Keep punctuation attached to each piece (instead of stripping it) so translation preserves it
-    const rawChunks = splitForApi(urduInput);
-    let pieces = [];
-    for (const c of rawChunks) pieces.push(await translateChunk(c));
-    translatedText = pieces.join(' ').replace(/\s+/g, ' ').trim();
+    const cache = loadTranslateCache();
+    if (cache['__full__:' + urduInput]) {
+      translatedText = cache['__full__:' + urduInput];
+    } else {
+      const rawChunks = splitForApi(urduInput);
+      const pieces = [];
+      for (const c of rawChunks) pieces.push(await translateChunk(c));
+      translatedText = pieces.join(' ').replace(/\s+/g, ' ').trim();
+      cache['__full__:' + urduInput] = translatedText;
+      saveTranslateCache(cache);
+    }
 
     translatedBox.style.display = 'block';
     translatedBox.textContent = translatedText;
@@ -171,7 +231,10 @@ async function translateInput() {
   } catch (err) {
     console.error(err);
     const detail = (err && err.message) ? err.message : String(err);
-    statusDiv.innerHTML = '<p style="color:#ff8080">❌ ترجمہ نہیں ہو سکا</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+    const rateLimited = /429|rate limit/i.test(detail);
+    statusDiv.innerHTML = rateLimited
+      ? '<p style="color:#ff8080">❌ ترجمہ سروس عارضی طور پر مصروف ہے (rate limit)</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">Please wait ~1 minute and try again. ' + detail + '</p>'
+      : '<p style="color:#ff8080">❌ ترجمہ نہیں ہو سکا</p><p style="color:#ffcccc;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
   } finally {
     translateBtn.disabled = false;
   }
