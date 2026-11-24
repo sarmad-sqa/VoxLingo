@@ -463,11 +463,11 @@
 const statusDiv = document.getElementById('status');
 function setStatus(html) {
   if (!html) {
-    setStatus('')
+    statusDiv.innerHTML = '';
     statusDiv.classList.remove('is-visible');
     return;
   }
-  setStatus(html)
+  statusDiv.innerHTML = html;
   statusDiv.classList.add('is-visible');
 }
 
@@ -608,8 +608,8 @@ async function translateInput() {
     const detail = (err && err.message) ? err.message : String(err);
     const rateLimited = /429|rate limit/i.test(detail);
     setStatus(rateLimited
-      ? '<p style="color:#b42318">❌ Translation service is busy (rate limit)</p><p style="color:#7f1d1d)font-size:12px;direction:ltr;text-align:left">Please wait ~1 minute and try again. ' + detail + '</p>'
-      : '<p style="color:#b42318">❌ Translation failed</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+      ? '<p style="color:#b42318">❌ Translation service is busy (rate limit)</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">Please wait ~1 minute and try again. ' + detail + '</p>'
+      : '<p style="color:#b42318">❌ Translation failed</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>');
   } finally {
     translateBtn.disabled = false;
   }
@@ -1376,7 +1376,7 @@ recordBtn.addEventListener('click', async () => {
       downloadLink.style.display = 'inline-block';
       setStatus(usedTtsAudio
         ? '<p style="color:#0f766e">✅ Video ready — download below</p>'
-        : '<p style="color:#0f766e">✅ Video ready — download below</p><p style="color:#3f3f46)font-size:12px">Note: This recording has no embedded audio, but the caption video is ready</p>';
+        : '<p style="color:#0f766e">✅ Video ready — download below</p><p style="color:#3f3f46;font-size:12px">Note: This recording has no embedded audio, but the caption video is ready</p>');
       recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
       clearLiveWords();
     };
@@ -1415,7 +1415,7 @@ recordBtn.addEventListener('click', async () => {
   } catch (err) {
     console.error(err);
     const detail = (err && err.message) ? err.message : String(err);
-    setStatus('<p style="color:#b42318">❌ Recording failed</p><p style="color:#7f1d1d)font-size:12px;direction:ltr;text-align:left">' + detail + '</p>';
+    setStatus('<p style="color:#b42318">❌ Recording failed</p><p style="color:#7f1d1d;font-size:12px;direction:ltr;text-align:left">' + detail + '</p>');
     recordBtn.disabled = false; playBtn.disabled = false; translateBtn.disabled = false;
     endSpeakingVisuals();
     speechSynthesis.cancel();
